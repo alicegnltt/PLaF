@@ -7,13 +7,8 @@ let g_store = Store.empty_store 20 (NumVal 0)
 let rec addIds fs evs =
   match (fs, evs) with
   | [], [] -> []
-  | (id, _)::t1, ev::t2 -> (id, ev)::(addIds t1 t2)
-  | _, _ -> failwith "Mismatched lists"
-
-let rec find_ids record = 
-  match record with 
-  | [] -> []
-  | (fst, _)::t -> fst::(find_ids t) 
+  | (id,(is_mutable,_))::t1 , v::t2 -> (id,(is_mutable,v)):: addIds t1 t2
+  | _ -> failwith " error : lists have different sizes "
 
 let rec eval_expr : expr -> exp_val ea_result = fun e ->
   match e with
@@ -103,65 +98,73 @@ let rec eval_expr : expr -> exp_val ea_result = fun e ->
     sequence (List.map eval_expr es) >>= fun l ->
     return (List.hd (List.rev l))
   | Unit -> return UnitVal
-  | IsEqual (e1,e2) -> (* check that evaluation of e1 , e2 are NumVals *)
+  | IsEqual (e1,e2) ->
     eval_expr e1 >>= 
     int_of_numVal >>= fun v1 ->
     eval_expr e2 >>=
     int_of_numVal >>= fun v2 ->
     return (BoolVal (v1 = v2))
-  | IsGT ( e1 , e2 ) -> (* check that evaluation of e1 , e2 are NumVals *)
+  | IsGT ( e1 , e2 ) -> 
     eval_expr e1 >>= 
     int_of_numVal >>= fun v1 ->
     eval_expr e2 >>=
     int_of_numVal >>= fun v2 ->
     return (BoolVal (v1 > v2))
-  | IsLT ( e1 , e2 ) -> (* check that evaluation of e1 , e2 are NumVals *)
+  | IsLT ( e1 , e2 ) -> 
     eval_expr e1 >>= 
     int_of_numVal >>= fun v1 ->
     eval_expr e2 >>=
     int_of_numVal >>= fun v2 ->
     return (BoolVal (v1 < v2))
   | IsNumber (e) ->
-    eval_expr e >>= 
-    int_of_numVal >>= fun _ ->
-    return (BoolVal (true))
+    eval_expr e >>= fun num ->
+    (match num with 
+    | NumVal _ -> return @@ BoolVal(true)
+    | _ -> return @@ BoolVal(false))
   | Record (fs) ->
-    sequence (List.map process_field fs ) >>= fun evs ->
+    sequence (List.map process_field fs) >>= fun evs ->
     return (RecordVal (addIds fs evs))
-  | Proj (e, id) -> (* e -> expression that evaluates to a record | id -> field  want to access *)
+  | Proj (e, id) -> 
     eval_expr e >>=
     fields_of_recordVal >>= fun record ->
-    if List.mem id (find_ids record) 
-    then return (List.assoc id record)
-    else failwith "Proj: Field not found"
-  | SetField (e1, id, e2) -> (* record: (string*(bool*exp_val)) list *)
-    eval_expr e1 >>= fields_of_recordVal >>= fun ev1 ->
-    if List.mem id (find_ids ev1) 
-    then (*check if it's mutable or not*)
-      eval_expr e2 >>= fun ev2 ->
-      (match (List.assoc id ev1) with
-       | PairVal(BoolVal(true),RefVal ref) -> (* ref contains the address of the *)
-          begin
-            (Store.set_ref g_store ref ev2) >>= fun _ -> 
-            return ev2
-          end
-       | PairVal(BoolVal(false),_) -> error "Field is not mutable"
-       | _ -> error "Failed to modify record")
-    else failwith "SetField: id is not in records"
+    let id_val = List.assoc id record in 
+    (match id_val with 
+    | f -> proj_help(id, f)
+    | exception Not_found -> error "Proj: Field not found" )
+  | SetField (e1, id, e2) ->
+    eval_expr e1 >>= fields_of_recordVal >>= fun rec1 ->
+    let id_val = List.assoc id rec1 in
+    ( match id_val with 
+    | f -> set_help(id, f) e2
+    | exception Not_found -> error "SetField: Field not found" )
   | Debug(_e) ->
     string_of_env >>= fun str_env ->
     let str_store = Store.string_of_store string_of_expval g_store 
     in (print_endline (str_env^"\n"^str_store);
-    error "Reached breakpoint")
+    error "Reached breakpoint") 
   | _ -> failwith ("Not implemented: "^string_of_expr e)
   and 
-  process_field(_id,(is_mutable,e)) =
-  eval_expr e >>= fun ev ->
+  process_field (_id,(is_mutable,e)) = 
+  eval_expr e >>= fun ev -> 
   if is_mutable
-  then return (RefVal ( Store.new_ref g_store ev ))
+  then return ( RefVal ( Store.new_ref g_store ev )) 
   else return ev
-  
-  
+  and
+  proj_help(_id,(is_mutable,e)) =
+  if is_mutable
+  then int_of_refVal e >>= (Store.deref g_store)
+  else return e
+  and 
+  set_help(_id,(is_mutable,e)) e2 = 
+  if is_mutable
+  then 
+      int_of_refVal e >>= fun rec1 ->
+      eval_expr e2 >>= fun rec2 ->
+      (Store.set_ref g_store rec1 rec2) >>= fun _ -> 
+      return UnitVal 
+  else error "Failed to modify record"
+
+
 
 let eval_prog (AProg(_,e)) =
   eval_expr e         
@@ -179,3 +182,4 @@ let interpf ( s:string ) : exp_val result =
   in interp @@ read_file file_name
 
 
+  
