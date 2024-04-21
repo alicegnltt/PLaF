@@ -89,18 +89,20 @@ let rec eval_expr : expr -> exp_val ea_result = fun e ->
     eval_expr e2 >>= fun v2 ->
     Store.set_ref g_store v1 v2 >>= fun _ ->
     return UnitVal
+  | Record([]) ->
+    error "record empty list" 
   | Debug(_e) ->
     string_of_env >>= fun str_env ->
     let str_store = Store.string_of_store string_of_expval g_store 
     in (print_endline (str_env^"\n"^str_store);
         error "Reached breakpoint")
   | _ -> failwith ("Not implemented: "^string_of_expr e)
-
+  
 let eval_prog (AProg(_,e)) =
   eval_expr e   
+
 
 (* Interpret an expression *)
 let interp (s:string) : exp_val result =
   let c = s |> parse |> eval_prog
   in run c
-
