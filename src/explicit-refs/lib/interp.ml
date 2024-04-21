@@ -1,6 +1,8 @@
 open Ds
 open Parser_plaf.Ast
 open Parser_plaf.Parser
+
+(* Alice Agnoletto *)
     
 let g_store = Store.empty_store 20 (NumVal 0)
 
@@ -163,7 +165,6 @@ let rec eval_expr : expr -> exp_val ea_result = fun e ->
       (Store.set_ref g_store rec1 rec2) >>= fun _ -> 
       return UnitVal 
   else error "Failed to modify record"
-
 
 
 let eval_prog (AProg(_,e)) =
