@@ -101,14 +101,14 @@ let rec eval_expr : expr -> exp_val ea_result =
   | CaseT(e1, e2, id1, id2, id3, e3) ->
     eval_expr e1 >>= tree_of_treeVal >>=
     fun t1 ->
-      match t1 with
+      (match t1 with
       | Empty -> eval_expr e2
       | Node(data, l, r) -> 
         extend_env id1 data >>+
         extend_env id2 (TreeVal l) >>+
         extend_env id3 (TreeVal r) >>+
         eval_expr e3
-      | _ -> error "Invalid"
+      | _ -> error "Invalid")
   | _ -> failwith "Not implemented yet!" 
   and
     eval_exprs : expr list -> ( exp_val list ) ea_result =
